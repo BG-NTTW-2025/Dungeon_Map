@@ -2,9 +2,9 @@
 <html lang="nl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dugeon Map</title>
-    <!-- Konva.js voor zoomable & draggable canvas -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Doolhof Beheer Overzicht</title>
+    <!-- Konva.js -->
     <script src="https://unpkg.com/konva@9/konva.min.js"></script>
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -15,6 +15,7 @@
             overflow: hidden;
             background-color: #222;
             font-family: sans-serif;
+            touch-action: none; /* Voorkomt standaard browser-scrollgedrag op tablets */
         }
         #info-overlay {
             position: absolute;
@@ -34,8 +35,8 @@
 
     <div id="info-overlay">
         <strong>Doolhof Kaart (Puzzle_Labyrinth)</strong><br>
-        - Sleep om te bewegen (Pan)<br>
-        - Scroll om in/uit te zoomen
+        - Sleep / Vingers slepen om te bewegen<br>
+        - Muiswiel / Pinch (2 vingers) om in/uit te zoomen
     </div>
 
     <div id="container"></div>
@@ -62,7 +63,7 @@
             stage.height(window.innerHeight);
         });
 
-        // 3. Zoom Functionaliteit via Muiswiel
+        // 3. Zoom & Pan Functionaliteit (Muiswiel voor desktop)
         stage.on('wheel', (e) => {
             e.evt.preventDefault();
             const scaleBy = 1.1;
@@ -75,8 +76,7 @@
             };
 
             const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
-            
-            if (newScale < 0.2 || newScale > 5) return;
+            if (newScale < 0.1 || newScale > 5) return;
 
             stage.scale({ x: newScale, y: newScale });
 
@@ -87,17 +87,49 @@
             stage.position(newPos);
         });
 
-        // 4. Data ophalen uit de juiste tabel en tekenen
+        // 4. Pinch-to-Zoom logica voor Tablets / Touch-schermen
+        let lastDist = 0;
+
+        stage.on('touchmove', (e) => {
+            const touch1 = e.evt.touches[0];
+            const touch2 = e.evt.touches[1];
+
+            if (touch1 && touch2) {
+                // Twee vingers: Pinch zoom
+                e.evt.preventDefault();
+                const dist = Math.sqrt(
+                    Math.pow(touch2.clientX - touch1.clientX, 2) +
+                    Math.pow(touch2.clientY - touch1.clientY, 2)
+                );
+
+                if (!lastDist) {
+                    lastDist = dist;
+                }
+
+                const scaleBy = dist / lastDist;
+                const oldScale = stage.scaleX();
+                const newScale = oldScale * scaleBy;
+
+                if (newScale > 0.1 && newScale < 5) {
+                    stage.scale({ x: newScale, y: newScale });
+                }
+                lastDist = dist;
+            }
+        });
+
+        stage.on('touchend', () => {
+            lastDist = 0;
+        });
+
+        // 5. Data ophalen uit Supabase en tekenen
         async function loadMazeMap() {
             try {
-                // Haal data op uit 'Puzzle_Labyrinth'
                 const { data: rows, error: roomError } = await supabaseClient
                     .from('Puzzle_Labyrinth')
                     .select('*');
 
                 if (roomError) throw roomError;
 
-                // Groepeer deuren per room_id en bewaar de pos_x en pos_y per unieke kamer
                 const doorsMap = {};
                 const uniqueRoomsMap = {};
 
@@ -105,7 +137,6 @@
                     const roomId = row.room_id || row.id; 
                     const side = row.wall_side;
 
-                    // Sla de coördinaten op voor deze kamer (gebruikt pos_x en pos_y)
                     if (!uniqueRoomsMap[roomId] && row.pos_x !== null && row.pos_y !== null) {
                         uniqueRoomsMap[roomId] = {
                             id: roomId,
@@ -114,7 +145,6 @@
                         };
                     }
 
-                    // Voeg de deur/muurkant toe aan de lijst voor deze kamer
                     if (!doorsMap[roomId]) {
                         doorsMap[roomId] = [];
                     }
@@ -124,15 +154,14 @@
                 });
 
                 const boxSize = 50;
-                const spacing = 7;
+                const spacing = 15;
                 const step = boxSize + spacing;
 
-                // Loop door alle unieke kamers heen en teken ze op het canvas
                 Object.values(uniqueRoomsMap).forEach(room => {
                     if (room.x === undefined || room.y === undefined) return;
 
                     const posX = room.x * step;
-                    const posY = -room.y * step;
+                    const posY = -room.y * step; // Y-as omgedraaid zodat Noord naar boven wijst
 
                     // Basis kamer rechthoek
                     const rect = new Konva.Rect({
@@ -147,23 +176,23 @@
                     });
                     layer.add(rect);
 
-// Kamernummer / ID weergave met automatische schaling of compacte tekst
-const text = new Konva.Text({
-    x: posX,
-    y: posY + 16,
-    text: `R-${room.id}`,
-    width: boxSize,
-    align: 'center',
-    fontSize: room.id > 999999 ? 9 : 12, // Schakel naar een kleiner lettertype bij extreme getallen
-    fill: '#ffffff',
-    fontStyle: 'bold'
-});
-layer.add(text);
+                    // Kamernummer / ID weergave (kleiniger lettertype bij grote getallen)
+                    const text = new Konva.Text({
+                        x: posX,
+                        y: posY + 16,
+                        text: `R-${room.id}`,
+                        width: boxSize,
+                        align: 'center',
+                        fontSize: room.id > 999999 ? 9 : 12,
+                        fill: '#ffffff',
+                        fontStyle: 'bold'
+                    });
+                    layer.add(text);
 
-                    // Deuren tekenen op basis van de wall_side waarden
+                    // Deuren tekenen
                     const roomDoors = doorsMap[room.id] || [];
                     const doorSize = 18;
-                    const doorColor = '#cc3333'; // Rode accentkleur voor deuren
+                    const doorColor = '#cc3333';
 
                     roomDoors.forEach(side => {
                         let dx = posX, dy = posY, dw = doorSize, dh = 4;
@@ -202,6 +231,14 @@ layer.add(text);
                 });
 
                 layer.draw();
+
+                // 6. Automatisch centreren op het scherm (start bij kamer [0,0] of het midden van de getekende kamers)
+                // We centreren het scherm nu mooi rondom coördinaat (0,0) of het middelpunt van de stage:
+                stage.position({
+                    x: window.innerWidth / 2 - 25,   // compenseert de helft van een kamerbox (50/2)
+                    y: window.innerHeight / 2 - 25
+                });
+                stage.batchDraw();
 
             } catch (err) {
                 console.error('Fout bij het laden van de doolhof data:', err);
