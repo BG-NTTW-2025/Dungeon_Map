@@ -119,9 +119,9 @@
 
         stage.on('touchend', () => { lastDist = 0; });
 
-        // 5. Versleepbare Info Container
-        const infoBoxWidth = 260;
-        const infoBoxHeight = 110;
+        // 5. Versleepbare Info Container (iets groter gemaak om meerdere regels te passen)
+        const infoBoxWidth = 280;
+        const infoBoxHeight = 160;
 
         const infoGroup = new Konva.Group({
             x: 20,
@@ -155,7 +155,7 @@
             e.cancelBubble = true;
         });
 
-        // Helper functie voor tekst inkorten
+        // Helper functie voor tekst inkorten tot maximaal 30 karakters
         function truncate(str, n) {
             if (!str) return 'Geen';
             return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
@@ -171,7 +171,8 @@
                 if (roomError) throw roomError;
 
                 const roomsDataMap = {};
-rows.forEach(row => {
+
+                rows.forEach(row => {
                     const roomId = row.room_id || row.id; 
                     const side = row.wall_side;
 
@@ -180,16 +181,20 @@ rows.forEach(row => {
                             id: roomId,
                             x: row.pos_x,
                             y: row.pos_y,
-                            designer: row.designer_name || 'Onbekend', // Haalt direct de naam uit de nieuwe kolom!
-                            puzzleName: row.puzzle_name || 'Geen puzzel',
-                            doors: []
+                            walls: [] // Sla alle muren/puzzels van deze kamer op
                         };
                     }
 
-                    if (side && !roomsDataMap[roomId].doors.includes(side.toLowerCase())) {
-                        roomsDataMap[roomId].doors.push(side.toLowerCase());
+                    // Voeg de details per muur toe
+                    if (side) {
+                        roomsDataMap[roomId].walls.push({
+                            side: side.toLowerCase(),
+                            designer: row.designer_name || 'Onbekend',
+                            puzzleName: row.puzzle_name || 'Geen puzzel'
+                        });
                     }
                 });
+
                 const boxSize = 50;
                 const spacing = 15;
                 const step = boxSize + spacing;
@@ -206,7 +211,6 @@ rows.forEach(row => {
                         cursor: 'pointer'
                     });
 
-                    // Basis kamer rechthoek (deze krijgt nu een 'hitFunc' of we vangen de klik direct op de rect op)
                     const rect = new Konva.Rect({
                         width: boxSize,
                         height: boxSize,
@@ -225,33 +229,33 @@ rows.forEach(row => {
                         fontSize: room.id > 999999 ? 9 : 12,
                         fill: '#ffffff',
                         fontStyle: 'bold',
-                        listening: false // Zorgt dat de muisklik door de tekst heen direct op de kamer valt
+                        listening: false
                     });
                     roomGroup.add(text);
 
-                    // Deuren tekenen
+                    // Deuren tekenen op basis van de opgeslagen muren
                     const doorSize = 18;
                     const doorColor = '#cc3333';
 
-                    room.doors.forEach(side => {
+                    room.walls.forEach(wall => {
                         let dx = 0, dy = 0, dw = doorSize, dh = 4;
 
-                        if (side === 'north') {
+                        if (wall.side === 'north') {
                             dx = (boxSize - doorSize) / 2;
                             dy = -2;
                             dw = doorSize;
                             dh = 4;
-                        } else if (side === 'south') {
+                        } else if (wall.side === 'south') {
                             dx = (boxSize - doorSize) / 2;
                             dy = boxSize - 2;
                             dw = doorSize;
                             dh = 4;
-                        } else if (side === 'west') {
+                        } else if (wall.side === 'west') {
                             dx = -2;
                             dy = (boxSize - doorSize) / 2;
                             dw = 4;
                             dh = doorSize;
-                        } else if (side === 'east') {
+                        } else if (wall.side === 'east') {
                             dx = boxSize - 2;
                             dy = (boxSize - doorSize) / 2;
                             dw = 4;
@@ -269,10 +273,8 @@ rows.forEach(row => {
                         roomGroup.add(doorRect);
                     });
 
-                    // Klik / Tap event direct op de roomGroup koppelen
+                    // Klik / Tap event om de windrichtingen netjes onder elkaar te tonen
                     roomGroup.on('click tap', () => {
-                        console.log("Kamer geklikt:", room.id); // Test of hij aanslaat in je console
-
                         rect.fill('#ffaa33');
                         layer.batchDraw();
                         setTimeout(() => {
@@ -280,18 +282,26 @@ rows.forEach(row => {
                             layer.batchDraw();
                         }, 200);
 
-                        const formattedDoors = room.doors.length > 0 
-                            ? room.doors.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ') 
-                            : 'Geen';
+                        // Bouw de tekst op per windrichting
+                        let displayText = `Room: R-${room.id}\n`;
 
-                        const safePuzzleName = truncate(room.puzzleName, 30);
+                        if (room.walls.length === 0) {
+                            displayText += `Geen deuren/puzzels gevonden.`;
+                        } else {
+                            room.walls.forEach(wall => {
+                                const formattedSide = wall.side.charAt(0).toUpperCase() + wall.side.slice(1);
+                                const safePuzzleName = truncate(wall.puzzleName, 30);
+                                displayText += `Door: ${formattedSide}\n`;
+                                displayText += `By: ${wall.designer}\n`;
+                                displayText += `Puzzle: ${safePuzzleName}\n`;
+                            });
+                        }
 
-                        infoText.text(
-                            `Room: R-${room.id}\n` +
-                            `Doors: ${formattedDoors}\n` +
-                            `By: ${room.designer}\n` +
-                            `Puzzle: ${safePuzzleName}`
-                        );
+                        infoText.text(displayText);
+                        
+                        // Pas optioneel de hoogte van het achtergrondvak aan als er heel veel muren zijn
+                        infoBg.height(Math.max(110, 30 + (room.walls.length * 55)));
+                        
                         uiLayer.batchDraw();
                     });
 
