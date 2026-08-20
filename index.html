@@ -171,8 +171,7 @@
                 if (roomError) throw roomError;
 
                 const roomsDataMap = {};
-
-                rows.forEach(row => {
+rows.forEach(row => {
                     const roomId = row.room_id || row.id; 
                     const side = row.wall_side;
 
@@ -181,8 +180,8 @@
                             id: roomId,
                             x: row.pos_x,
                             y: row.pos_y,
-                            designer: row.user_name || row.designer || 'Onbekend',
-                            puzzleName: row.puzzle_name || row.name || 'Geen puzzel',
+                            designer: row.designer_name || 'Onbekend', // Haalt direct de naam uit de nieuwe kolom!
+                            puzzleName: row.puzzle_name || 'Geen puzzel',
                             doors: []
                         };
                     }
@@ -191,7 +190,6 @@
                         roomsDataMap[roomId].doors.push(side.toLowerCase());
                     }
                 });
-
                 const boxSize = 50;
                 const spacing = 15;
                 const step = boxSize + spacing;
