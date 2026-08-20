@@ -15,7 +15,7 @@
             overflow: hidden;
             background-color: #222;
             font-family: sans-serif;
-            touch-action: none; /* Voorkomt standaard browser-scrollgedrag op tablets */
+            touch-action: none;
         }
         #info-overlay {
             position: absolute;
@@ -35,6 +35,7 @@
 
     <div id="info-overlay">
         <strong>Doolhof Kaart (Puzzle_Labyrinth)</strong><br>
+        - Klik op een kamer voor details<br>
         - Sleep / Vingers slepen om te bewegen<br>
         - Muiswiel / Pinch (2 vingers) om in/uit te zoomen
     </div>
@@ -43,9 +44,9 @@
 
     <script>
         // 1. Supabase Configuratie
-const supabaseUrl = 'https://mgqoxmnryqekrpjglffb.supabase.co';
-const supabaseKey = 'sb_publishable_btgAerx5A8O7urSEflRDAg_8NSdtoOu';
-const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+        const supabaseUrl = 'https://mgqoxmnryqekrpjglffb.supabase.co';
+        const supabaseKey = 'sb_publishable_btgAerx5A8O7urSEflRDAg_8NSdtoOu';
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
         // 2. Konva Stage (Canvas) Initialiseren
         const stage = new Konva.Stage({
@@ -58,12 +59,15 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
         const layer = new Konva.Layer();
         stage.add(layer);
 
+        const uiLayer = new Konva.Layer();
+        stage.add(uiLayer);
+
         window.addEventListener('resize', () => {
             stage.width(window.innerWidth);
             stage.height(window.innerHeight);
         });
 
-        // 3. Zoom & Pan Functionaliteit (Muiswiel voor desktop)
+        // 3. Zoom & Pan Functionaliteit
         stage.on('wheel', (e) => {
             e.evt.preventDefault();
             const scaleBy = 1.1;
@@ -87,24 +91,20 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
             stage.position(newPos);
         });
 
-        // 4. Pinch-to-Zoom logica voor Tablets / Touch-schermen
+        // 4. Pinch-to-Zoom logica
         let lastDist = 0;
-
         stage.on('touchmove', (e) => {
             const touch1 = e.evt.touches[0];
             const touch2 = e.evt.touches[1];
 
             if (touch1 && touch2) {
-                // Twee vingers: Pinch zoom
                 e.evt.preventDefault();
                 const dist = Math.sqrt(
                     Math.pow(touch2.clientX - touch1.clientX, 2) +
                     Math.pow(touch2.clientY - touch1.clientY, 2)
                 );
 
-                if (!lastDist) {
-                    lastDist = dist;
-                }
+                if (!lastDist) lastDist = dist;
 
                 const scaleBy = dist / lastDist;
                 const oldScale = stage.scaleX();
@@ -117,11 +117,51 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
             }
         });
 
-        stage.on('touchend', () => {
-            lastDist = 0;
+        stage.on('touchend', () => { lastDist = 0; });
+
+        // 5. Versleepbare Info Container
+        const infoBoxWidth = 260;
+        const infoBoxHeight = 110;
+
+        const infoGroup = new Konva.Group({
+            x: 20,
+            y: 90,
+            draggable: true
         });
 
-        // 5. Data ophalen uit Supabase en tekenen
+        const infoBg = new Konva.Rect({
+            width: infoBoxWidth,
+            height: infoBoxHeight,
+            fill: 'rgba(0, 0, 0, 0.85)',
+            stroke: '#555',
+            strokeWidth: 1,
+            cornerRadius: 8
+        });
+        infoGroup.add(infoBg);
+
+        const infoText = new Konva.Text({
+            x: 12,
+            y: 12,
+            text: 'Klik op een kamer\nvoor details...',
+            fontSize: 13,
+            fill: '#ffffff',
+            lineHeight: 1.4,
+            width: infoBoxWidth - 24
+        });
+        infoGroup.add(infoText);
+        uiLayer.add(infoGroup);
+
+        infoGroup.on('mousedown touchstart', (e) => {
+            e.cancelBubble = true;
+        });
+
+        // Helper functie voor tekst inkorten
+        function truncate(str, n) {
+            if (!str) return 'Geen';
+            return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
+        }
+
+        // 6. Data ophalen uit Supabase en tekenen
         async function loadMazeMap() {
             try {
                 const { data: rows, error: roomError } = await supabaseClient
@@ -130,26 +170,25 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
                 if (roomError) throw roomError;
 
-                const doorsMap = {};
-                const uniqueRoomsMap = {};
+                const roomsDataMap = {};
 
                 rows.forEach(row => {
                     const roomId = row.room_id || row.id; 
                     const side = row.wall_side;
 
-                    if (!uniqueRoomsMap[roomId] && row.pos_x !== null && row.pos_y !== null) {
-                        uniqueRoomsMap[roomId] = {
+                    if (!roomsDataMap[roomId]) {
+                        roomsDataMap[roomId] = {
                             id: roomId,
                             x: row.pos_x,
-                            y: row.pos_y
+                            y: row.pos_y,
+                            designer: row.user_name || row.designer || 'Onbekend',
+                            puzzleName: row.puzzle_name || row.name || 'Geen puzzel',
+                            doors: []
                         };
                     }
 
-                    if (!doorsMap[roomId]) {
-                        doorsMap[roomId] = [];
-                    }
-                    if (side) {
-                        doorsMap[roomId].push(side.toLowerCase());
+                    if (side && !roomsDataMap[roomId].doors.includes(side.toLowerCase())) {
+                        roomsDataMap[roomId].doors.push(side.toLowerCase());
                     }
                 });
 
@@ -157,16 +196,20 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
                 const spacing = 15;
                 const step = boxSize + spacing;
 
-                Object.values(uniqueRoomsMap).forEach(room => {
+                Object.values(roomsDataMap).forEach(room => {
                     if (room.x === undefined || room.y === undefined) return;
 
                     const posX = room.x * step;
-                    const posY = -room.y * step; // Y-as omgedraaid zodat Noord naar boven wijst
+                    const posY = -room.y * step;
 
-                    // Basis kamer rechthoek
-                    const rect = new Konva.Rect({
+                    const roomGroup = new Konva.Group({
                         x: posX,
                         y: posY,
+                        cursor: 'pointer'
+                    });
+
+                    // Basis kamer rechthoek (deze krijgt nu een 'hitFunc' of we vangen de klik direct op de rect op)
+                    const rect = new Konva.Rect({
                         width: boxSize,
                         height: boxSize,
                         fill: '#88aaff',
@@ -174,47 +217,45 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
                         strokeWidth: 2,
                         cornerRadius: 6
                     });
-                    layer.add(rect);
+                    roomGroup.add(rect);
 
-                    // Kamernummer / ID weergave (kleiniger lettertype bij grote getallen)
                     const text = new Konva.Text({
-                        x: posX,
-                        y: posY + 16,
+                        y: 16,
                         text: `R-${room.id}`,
                         width: boxSize,
                         align: 'center',
                         fontSize: room.id > 999999 ? 9 : 12,
                         fill: '#ffffff',
-                        fontStyle: 'bold'
+                        fontStyle: 'bold',
+                        listening: false // Zorgt dat de muisklik door de tekst heen direct op de kamer valt
                     });
-                    layer.add(text);
+                    roomGroup.add(text);
 
                     // Deuren tekenen
-                    const roomDoors = doorsMap[room.id] || [];
                     const doorSize = 18;
                     const doorColor = '#cc3333';
 
-                    roomDoors.forEach(side => {
-                        let dx = posX, dy = posY, dw = doorSize, dh = 4;
+                    room.doors.forEach(side => {
+                        let dx = 0, dy = 0, dw = doorSize, dh = 4;
 
                         if (side === 'north') {
-                            dx = posX + (boxSize - doorSize) / 2;
-                            dy = posY - 2;
+                            dx = (boxSize - doorSize) / 2;
+                            dy = -2;
                             dw = doorSize;
                             dh = 4;
                         } else if (side === 'south') {
-                            dx = posX + (boxSize - doorSize) / 2;
-                            dy = posY + boxSize - 2;
+                            dx = (boxSize - doorSize) / 2;
+                            dy = boxSize - 2;
                             dw = doorSize;
                             dh = 4;
                         } else if (side === 'west') {
-                            dx = posX - 2;
-                            dy = posY + (boxSize - doorSize) / 2;
+                            dx = -2;
+                            dy = (boxSize - doorSize) / 2;
                             dw = 4;
                             dh = doorSize;
                         } else if (side === 'east') {
-                            dx = posX + boxSize - 2;
-                            dy = posY + (boxSize - doorSize) / 2;
+                            dx = boxSize - 2;
+                            dy = (boxSize - doorSize) / 2;
                             dw = 4;
                             dh = doorSize;
                         }
@@ -224,18 +265,45 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
                             y: dy,
                             width: dw,
                             height: dh,
-                            fill: doorColor
+                            fill: doorColor,
+                            listening: false
                         });
-                        layer.add(doorRect);
+                        roomGroup.add(doorRect);
                     });
+
+                    // Klik / Tap event direct op de roomGroup koppelen
+                    roomGroup.on('click tap', () => {
+                        console.log("Kamer geklikt:", room.id); // Test of hij aanslaat in je console
+
+                        rect.fill('#ffaa33');
+                        layer.batchDraw();
+                        setTimeout(() => {
+                            rect.fill('#88aaff');
+                            layer.batchDraw();
+                        }, 200);
+
+                        const formattedDoors = room.doors.length > 0 
+                            ? room.doors.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ') 
+                            : 'Geen';
+
+                        const safePuzzleName = truncate(room.puzzleName, 30);
+
+                        infoText.text(
+                            `Room: R-${room.id}\n` +
+                            `Doors: ${formattedDoors}\n` +
+                            `By: ${room.designer}\n` +
+                            `Puzzle: ${safePuzzleName}`
+                        );
+                        uiLayer.batchDraw();
+                    });
+
+                    layer.add(roomGroup);
                 });
 
                 layer.draw();
 
-                // 6. Automatisch centreren op het scherm (start bij kamer [0,0] of het midden van de getekende kamers)
-                // We centreren het scherm nu mooi rondom coördinaat (0,0) of het middelpunt van de stage:
                 stage.position({
-                    x: window.innerWidth / 2 - 25,   // compenseert de helft van een kamerbox (50/2)
+                    x: window.innerWidth / 2 - 25,
                     y: window.innerHeight / 2 - 25
                 });
                 stage.batchDraw();
