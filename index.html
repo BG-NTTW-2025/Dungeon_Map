@@ -161,7 +161,7 @@
             return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
         }
 
-        // 6. Data ophalen uit Supabase en tekenen
+// 6. Data ophalen uit Supabase en tekenen
         async function loadMazeMap() {
             try {
                 const { data: rows, error: roomError } = await supabaseClient
@@ -181,11 +181,10 @@
                             id: roomId,
                             x: row.pos_x,
                             y: row.pos_y,
-                            walls: [] // Sla alle muren/puzzels van deze kamer op
+                            walls: []
                         };
                     }
 
-                    // Voeg de details per muur toe
                     if (side) {
                         roomsDataMap[roomId].walls.push({
                             side: side.toLowerCase(),
@@ -195,12 +194,18 @@
                     }
                 });
 
+                // Vaste volgorde bepalen voor sorteren: North -> East -> South -> West
+                const sideOrder = { 'north': 1, 'east': 2, 'south': 3, 'west': 4 };
+
                 const boxSize = 50;
                 const spacing = 15;
                 const step = boxSize + spacing;
 
                 Object.values(roomsDataMap).forEach(room => {
                     if (room.x === undefined || room.y === undefined) return;
+
+                    // Sorteer de muren direct op de vaste windrichting-volgorde
+                    room.walls.sort((a, b) => (sideOrder[a.side] || 99) - (sideOrder[b.side] || 99));
 
                     const posX = room.x * step;
                     const posY = -room.y * step;
@@ -233,7 +238,7 @@
                     });
                     roomGroup.add(text);
 
-                    // Deuren tekenen op basis van de opgeslagen muren
+                    // Deuren tekenen
                     const doorSize = 18;
                     const doorColor = '#cc3333';
 
@@ -273,7 +278,7 @@
                         roomGroup.add(doorRect);
                     });
 
-                    // Klik / Tap event om de windrichtingen netjes onder elkaar te tonen
+                    // Klik / Tap event om de windrichtingen in vaste volgorde te tonen
                     roomGroup.on('click tap', () => {
                         rect.fill('#ffaa33');
                         layer.batchDraw();
@@ -282,7 +287,6 @@
                             layer.batchDraw();
                         }, 200);
 
-                        // Bouw de tekst op per windrichting
                         let displayText = `Room: R-${room.id}\n`;
 
                         if (room.walls.length === 0) {
@@ -298,10 +302,7 @@
                         }
 
                         infoText.text(displayText);
-                        
-                        // Pas optioneel de hoogte van het achtergrondvak aan als er heel veel muren zijn
                         infoBg.height(Math.max(110, 30 + (room.walls.length * 55)));
-                        
                         uiLayer.batchDraw();
                     });
 
@@ -317,11 +318,12 @@
                 stage.batchDraw();
 
             } catch (err) {
-                console.error('Fout bij het laden van de doolhof data:', err);
+                console.error('Fout bij het laden van het doolhof:', err);
             }
         }
 
         loadMazeMap();
+
     </script>
 </body>
 </html>
