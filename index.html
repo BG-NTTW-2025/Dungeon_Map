@@ -34,10 +34,10 @@
 <body>
 
     <div id="info-overlay">
-        <strong>Doolhof Kaart (Puzzle_Labyrinth)</strong><br>
-        - Klik op een kamer voor details<br>
-        - Sleep / Vingers slepen om te bewegen<br>
-        - Muiswiel / Pinch (2 vingers) om in/uit te zoomen
+        <strong>Map Puzzle Dungon</strong><br>
+        - Klick on a room for details<br>
+        - Drag to move dungeon<br>
+        - Mousewheel / Pinch (2 vingers) to zoom
     </div>
 
     <div id="container"></div>
@@ -142,7 +142,7 @@
         const infoText = new Konva.Text({
             x: 12,
             y: 12,
-            text: 'Klik op een kamer\nvoor details...',
+            text: 'Klick on a room\nfor details...',
             fontSize: 13,
             fill: '#ffffff',
             lineHeight: 1.4,
@@ -157,7 +157,7 @@
 
         // Helper functie voor tekst inkorten tot maximaal 30 karakters
         function truncate(str, n) {
-            if (!str) return 'Geen';
+            if (!str) return 'No';
             return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
         }
 
@@ -188,8 +188,8 @@
                     if (side) {
                         roomsDataMap[roomId].walls.push({
                             side: side.toLowerCase(),
-                            designer: row.designer_name || 'Onbekend',
-                            puzzleName: row.puzzle_name || 'Geen puzzel'
+                            designer: row.designer_name || 'Unknown',
+                            puzzleName: row.puzzle_name || 'No puzzle'
                         });
                     }
                 });
@@ -290,7 +290,7 @@
                         let displayText = `Room: R-${room.id}\n`;
 
                         if (room.walls.length === 0) {
-                            displayText += `Geen deuren/puzzels gevonden.`;
+                            displayText += `No doors/puzzles found.`;
                         } else {
                             room.walls.forEach(wall => {
                                 const formattedSide = wall.side.charAt(0).toUpperCase() + wall.side.slice(1);
