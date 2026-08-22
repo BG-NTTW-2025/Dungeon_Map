@@ -165,7 +165,7 @@
         async function loadMazeMap() {
             try {
                 const { data: rows, error: roomError } = await supabaseClient
-                    .from('Puzzle_Labyrinth')
+                    .from('e.g.')
                     .select('*');
 
                 if (roomError) throw roomError;
