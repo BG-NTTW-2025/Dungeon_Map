@@ -8,6 +8,27 @@
     <script src="https://unpkg.com/konva@9/konva.min.js"></script>
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	
+	// Controleer of de bezoeker wel is ingelogd als designer
+        async function checkDesignerAccess() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            
+            if (!session) {
+                // Niet ingelogd? Toon een weigeringstekst en breek de pagina af
+                document.body.innerHTML = `
+                    <div style="color: white; background: #1a1a2e; height: 100vh; display: flex; flex-direction: column; align-items: center; justifyContent: center; font-family: sans-serif; text-align: center; padding: 20px;">
+                        <h2 style="color: #e94560; margin-bottom: 10px;">Toegang Geweigerd</h2>
+                        <p style="color: #aaa; margin-bottom: 20px;">Je moet ingelogd zijn als ontwerper om de Dungeon Map te kunnen bekijken.</p>
+                        <a href="https://bg-nttw-2025.github.io/Dungeon_Submit_Puzzle/" style="background: #0f3460; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold;">Terug naar Inloggen</a>
+                    </div>
+                `;
+                throw new Error("Niet geautoriseerd");
+            }
+        }
+
+        // Voer deze check direct uit bij het laden van de pagina
+        checkDesignerAccess();
+	
     <style>
         body {
             margin: 0;
