@@ -346,6 +346,26 @@
                         window.open('https://bg-nttw-2025.github.io/Dungeon/', 'dungeon_game_window');
                     });
 
+		// Dubbelklik & Double-Tap logica voor zowel desktop als tablet
+                    let lastClickTime = 0;
+
+                    const openTargetRoom = () => {
+                        localStorage.setItem('target_room', room.id);
+                        window.open('https://bg-nttw-2025.github.io/Dungeon/', 'dungeon_game_window');
+                    };
+
+                    roomGroup.on('dblclick', openTargetRoom);
+
+                    roomGroup.on('tap', () => {
+                        const currentTime = new Date().getTime();
+                        const tapLength = currentTime - lastClickTime;
+                        if (tapLength < 300 && tapLength > 0) {
+                            // Binnen 300 milliseconden twee keer getikt = double tap!
+                            openTargetRoom();
+                        }
+                        lastClickTime = currentTime;
+                    });			
+
                     layer.add(roomGroup);
                 });
 
