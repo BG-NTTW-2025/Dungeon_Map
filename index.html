@@ -17,30 +17,35 @@
             font-family: sans-serif;
             touch-action: none;
         }
-        #info-overlay {
+#info-overlay {
             position: absolute;
             top: 10px;
             left: 10px;
             color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 15px;
-            border-radius: 6px;
-            pointer-events: none;
-            font-size: 14px;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #555;
+            padding: 12px 15px;
+            border-radius: 8px;
+            pointer-events: auto; /* Zodat je er eventueel op kunt klikken als dat nodig is */
+            font-size: 13px;
             z-index: 10;
             line-height: 1.5;
+            min-width: 250px;
         }
     </style>
 </head>
 <body>
 
-    <div id="info-overlay">
+<div id="info-overlay">
         <strong>Map Puzzle Dungeon</strong><br>
         <span id="stat-rooms">Rooms: Laten laden...</span><br>
         <span id="stat-doors">Doors: Laten laden...</span><br>
-        - Click on a room for details<br>
-        - Drag to move dungeon<br>
-        - Mousewheel / Pinch (2 vingers) to zoom
+        <hr style="border-color: #444; margin: 6px 0;">
+        <div id="room-details">
+            - Click on a room for details<br>
+            - Drag to move dungeon<br>
+            - Mousewheel / Pinch (2 vingers) to zoom
+        </div>
     </div>
 
     <div id="container"></div>
@@ -166,22 +171,6 @@
         const infoBoxWidth = 280;
         const infoBoxHeight = 160;
 
-        const infoGroup = new Konva.Group({
-            x: 20,
-            y: 90,
-            draggable: true
-        });
-
-        const infoBg = new Konva.Rect({
-            width: infoBoxWidth,
-            height: infoBoxHeight,
-            fill: 'rgba(0, 0, 0, 0.85)',
-            stroke: '#555',
-            strokeWidth: 1,
-            cornerRadius: 8
-        });
-        infoGroup.add(infoBg);
-
         const infoText = new Konva.Text({
             x: 12,
             y: 12,
@@ -191,12 +180,7 @@
             lineHeight: 1.4,
             width: infoBoxWidth - 24
         });
-        infoGroup.add(infoText);
-        uiLayer.add(infoGroup);
 
-        infoGroup.on('mousedown touchstart', (e) => {
-            e.cancelBubble = true;
-        });
 
         // Helper functie voor tekst inkorten tot maximaal 30 karakters
         function truncate(str, n) {
@@ -321,7 +305,7 @@
                         roomGroup.add(doorRect);
                     });
 
-                    // Klik / Tap event om de windrichtingen in vaste volgorde te tonen
+// Klik / Tap event om de windrichtingen te tonen in de vaste overlay
                     roomGroup.on('click tap', () => {
                         rect.fill('#ffaa33');
                         layer.batchDraw();
@@ -330,24 +314,23 @@
                             layer.batchDraw();
                         }, 200);
 
-                        let displayText = `Room: R-${room.id}\n`;
+					let displayText = "<strong>Room: R-" + room.id + "</strong><br>";
 
                         if (room.walls.length === 0) {
-                            displayText += `No doors/puzzles found.`;
+                            displayText += "No doors/puzzles found.";
                         } else {
                             room.walls.forEach(wall => {
                                 const formattedSide = wall.side.charAt(0).toUpperCase() + wall.side.slice(1);
                                 const safePuzzleName = truncate(wall.puzzleName, 30);
-                                displayText += `Door: ${formattedSide}\n`;
-                                displayText += `By: ${wall.designer}\n`;
-                                displayText += `Puzzle: ${safePuzzleName}\n`;
+                                displayText += "Door: " + formattedSide + "<br>";
+                                displayText += "By: " + wall.designer + "<br>";
+                                displayText += "Puzzle: " + safePuzzleName + "<br>";
                             });
                         }
 
-                        infoText.text(displayText);
-                        infoBg.height(Math.max(110, 30 + (room.walls.length * 55)));
-                        uiLayer.batchDraw();
+                        document.getElementById('room-details').innerHTML = displayText;
                     });
+					
 
                     layer.add(roomGroup);
                 });
