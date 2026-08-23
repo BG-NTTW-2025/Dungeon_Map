@@ -349,10 +349,6 @@
 		// Dubbelklik & Double-Tap logica voor zowel desktop als tablet
                     let lastClickTime = 0;
 
-                    const openTargetRoom = () => {
-                        localStorage.setItem('target_room', room.id);
-                        window.open('https://bg-nttw-2025.github.io/Dungeon/', 'dungeon_game_window');
-                    };
 
                     roomGroup.on('dblclick', openTargetRoom);
 
