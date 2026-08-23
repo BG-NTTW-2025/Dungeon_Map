@@ -28,14 +28,17 @@
             pointer-events: none;
             font-size: 14px;
             z-index: 10;
+            line-height: 1.5;
         }
     </style>
 </head>
 <body>
 
     <div id="info-overlay">
-        <strong>Map Puzzle Dungon</strong><br>
-        - Klick on a room for details<br>
+        <strong>Map Puzzle Dungeon</strong><br>
+        <span id="stat-rooms">Rooms: Laten laden...</span><br>
+        <span id="stat-doors">Doors: Laten laden...</span><br>
+        - Click on a room for details<br>
         - Drag to move dungeon<br>
         - Mousewheel / Pinch (2 vingers) to zoom
     </div>
@@ -119,7 +122,47 @@
 
         stage.on('touchend', () => { lastDist = 0; });
 
-        // 5. Versleepbare Info Container (iets groter gemaak om meerdere regels te passen)
+        // 5. Functie om Rooms en Doors op te halen en te tonen in de overlay
+        async function updateGlobalStats() {
+            try {
+                // Hoogste room_id opvragen
+                const { data: roomData, error: roomError } = await supabaseClient
+                    .from('puzzle_labyrinth')
+                    .select('room_id')
+                    .order('room_id', { ascending: false })
+                    .limit(1);
+
+                // Hoogste id opvragen
+                const { data: idData, error: idError } = await supabaseClient
+                    .from('puzzle_labyrinth')
+                    .select('id')
+                    .order('id', { ascending: false })
+                    .limit(1);
+
+                if (!roomError && roomData && roomData.length > 0) {
+                    const maxRoom = roomData[0].room_id || 0;
+                    document.getElementById('stat-rooms').textContent = `Rooms: ${maxRoom}`;
+                } else {
+                    document.getElementById('stat-rooms').textContent = `Rooms: 0`;
+                }
+
+                if (!idError && idData && idData.length > 0) {
+                    const maxId = idData[0].id || 0;
+                    const totalDoors = Math.floor(maxId / 2);
+                    document.getElementById('stat-doors').textContent = `Doors: ${totalDoors}`;
+                } else {
+                    document.getElementById('stat-doors').textContent = `Doors: 0`;
+                }
+            } catch (err) {
+                console.error('Fout bij ophalen globale statistieken:', err);
+            }
+        }
+
+        // Direct uitvoeren bij laden én elke 60 minuten herhalen (60 * 60 * 1000 ms)
+        updateGlobalStats();
+        setInterval(updateGlobalStats, 60 * 60 * 1000);
+
+        // 6. Versleepbare Info Container
         const infoBoxWidth = 280;
         const infoBoxHeight = 160;
 
@@ -142,7 +185,7 @@
         const infoText = new Konva.Text({
             x: 12,
             y: 12,
-            text: 'Klick on a room\nfor details...',
+            text: 'Click on a room\nfor details...',
             fontSize: 13,
             fill: '#ffffff',
             lineHeight: 1.4,
@@ -161,7 +204,7 @@
             return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
         }
 
-// 6. Data ophalen uit Supabase en tekenen
+        // 7. Data ophalen uit Supabase en tekenen
         async function loadMazeMap() {
             try {
                 const { data: rows, error: roomError } = await supabaseClient
