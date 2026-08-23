@@ -18,7 +18,7 @@
             font-family: sans-serif;
             touch-action: none;
         }
-#info-overlay {
+        #info-overlay {
             position: absolute;
             top: 10px;
             left: 10px;
@@ -27,7 +27,7 @@
             border: 1px solid #555;
             padding: 12px 15px;
             border-radius: 8px;
-            pointer-events: auto; /* Zodat je er eventueel op kunt klikken als dat nodig is */
+            pointer-events: auto;
             font-size: 13px;
             z-index: 10;
             line-height: 1.5;
@@ -37,7 +37,7 @@
 </head>
 <body>
 
-<div id="info-overlay">
+    <div id="info-overlay">
         <strong>Map Puzzle Dungeon</strong><br>
         <span id="stat-rooms">Rooms: Laten laden...</span><br>
         <span id="stat-doors">Doors: Laten laden...</span><br>
@@ -56,25 +56,23 @@
         const supabaseUrl = 'https://mgqoxmnryqekrpjglffb.supabase.co';
         const supabaseKey = 'sb_publishable_btgAerx5A8O7urSEflRDAg_8NSdtoOu';
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
-		
-			// Controleer of de bezoeker wel is ingelogd als designer
+	
+        // Controleer of de bezoeker wel is ingelogd als designer
         async function checkDesignerAccess() {
             const { data: { session } } = await supabaseClient.auth.getSession();
             
             if (!session) {
-                // Niet ingelogd? Toon een weigeringstekst en breek de pagina af
                 document.body.innerHTML = `
-                    <div style="color: white; background: #1a1a2e; height: 100vh; display: flex; flex-direction: column; align-items: center; justifyContent: center; font-family: sans-serif; text-align: center; padding: 20px;">
-                        <h2 style="color: #e94560; margin-bottom: 10px;">Access Denied</h2>
-                        <p style="color: #aaa; margin-bottom: 20px;">You must be logged in as a designer to view the Dungeon Map.</p>
-                        <a href="https://bg-nttw-2025.github.io/Dungeon_Submit_Puzzle/" style="background: #0f3460; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold;">Back to Log In</a>
-                    </div>
-                `;
-                throw new Error("Niet geautoriseerd");
+                    <div style="color: white; background: #1a1a2e; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; text-align: center; padding: 20px;">' +
+                        '<h2 style="color: #e94560; margin-bottom: 10px;">Access Denied</h2>' +
+                        '<p style="color: #aaa; margin-bottom: 20px;">You must be logged in as a designer to view the Dungeon Map.</p>' +
+                        '<a href="https://bg-nttw-2025.github.io/Dungeon_Submit_Puzzle/" style="background: #0f3460; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold;">Back to Log In</a>' +
+                    '</div>';
+                
+                throw new Error('Unauthorized');
             }
         }
 
-        // Voer deze check direct uit bij het laden van de pagina
         checkDesignerAccess();
 
         // 2. Konva Stage (Canvas) Initialiseren
@@ -151,14 +149,12 @@
         // 5. Functie om Rooms en Doors op te halen en te tonen in de overlay
         async function updateGlobalStats() {
             try {
-                // Hoogste room_id opvragen
                 const { data: roomData, error: roomError } = await supabaseClient
                     .from('puzzle_labyrinth')
                     .select('room_id')
                     .order('room_id', { ascending: false })
                     .limit(1);
 
-                // Hoogste id opvragen
                 const { data: idData, error: idError } = await supabaseClient
                     .from('puzzle_labyrinth')
                     .select('id')
@@ -167,28 +163,26 @@
 
                 if (!roomError && roomData && roomData.length > 0) {
                     const maxRoom = roomData[0].room_id || 0;
-                    document.getElementById('stat-rooms').textContent = `Rooms: ${maxRoom}`;
+                    document.getElementById('stat-rooms').textContent = "Rooms: " + maxRoom;
                 } else {
-                    document.getElementById('stat-rooms').textContent = `Rooms: 0`;
+                    document.getElementById('stat-rooms').textContent = "Rooms: 0";
                 }
 
                 if (!idError && idData && idData.length > 0) {
                     const maxId = idData[0].id || 0;
                     const totalDoors = Math.floor(maxId / 2);
-                    document.getElementById('stat-doors').textContent = `Doors: ${totalDoors}`;
+                    document.getElementById('stat-doors').textContent = "Doors: " + totalDoors;
                 } else {
-                    document.getElementById('stat-doors').textContent = `Doors: 0`;
+                    document.getElementById('stat-doors').textContent = "Doors: 0";
                 }
             } catch (err) {
                 console.error('Fout bij ophalen globale statistieken:', err);
             }
         }
 
-        // Direct uitvoeren bij laden én elke 60 minuten herhalen (60 * 60 * 1000 ms)
         updateGlobalStats();
         setInterval(updateGlobalStats, 60 * 60 * 1000);
 
-        // 6. Versleepbare Info Container
         const infoBoxWidth = 280;
         const infoBoxHeight = 160;
 
@@ -202,8 +196,6 @@
             width: infoBoxWidth - 24
         });
 
-
-        // Helper functie voor tekst inkorten tot maximaal 30 karakters
         function truncate(str, n) {
             if (!str) return 'No';
             return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
@@ -242,9 +234,7 @@
                     }
                 });
 
-                // Vaste volgorde bepalen voor sorteren: North -> East -> South -> West
                 const sideOrder = { 'north': 1, 'east': 2, 'south': 3, 'west': 4 };
-
                 const boxSize = 50;
                 const spacing = 15;
                 const step = boxSize + spacing;
@@ -252,7 +242,6 @@
                 Object.values(roomsDataMap).forEach(room => {
                     if (room.x === undefined || room.y === undefined) return;
 
-                    // Sorteer de muren direct op de vaste windrichting-volgorde
                     room.walls.sort((a, b) => (sideOrder[a.side] || 99) - (sideOrder[b.side] || 99));
 
                     const posX = room.x * step;
@@ -276,7 +265,7 @@
 
                     const text = new Konva.Text({
                         y: 16,
-                        text: `R-${room.id}`,
+                        text: "R-" + room.id,
                         width: boxSize,
                         align: 'center',
                         fontSize: room.id > 999999 ? 9 : 12,
@@ -286,7 +275,6 @@
                     });
                     roomGroup.add(text);
 
-                    // Deuren tekenen
                     const doorSize = 18;
                     const doorColor = '#cc3333';
 
@@ -326,7 +314,7 @@
                         roomGroup.add(doorRect);
                     });
 
-// Klik / Tap event om de windrichtingen te tonen in de vaste overlay
+                    // Klik / Tap event
                     roomGroup.on('click tap', () => {
                         rect.fill('#ffaa33');
                         layer.batchDraw();
@@ -335,7 +323,7 @@
                             layer.batchDraw();
                         }, 200);
 
-					let displayText = "<strong>Room: R-" + room.id + "</strong><br>";
+                        let displayText = "<strong>Room: R-" + room.id + "</strong><br>";
 
                         if (room.walls.length === 0) {
                             displayText += "No doors/puzzles found.";
@@ -351,7 +339,12 @@
 
                         document.getElementById('room-details').innerHTML = displayText;
                     });
-					
+
+                    // Dubbelklik event
+                    roomGroup.on('dblclick', () => {
+                        localStorage.setItem('target_room', room.id);
+                        window.open('https://bg-nttw-2025.github.io/Dungeon/', 'dungeon_game_window');
+                    });
 
                     layer.add(roomGroup);
                 });
