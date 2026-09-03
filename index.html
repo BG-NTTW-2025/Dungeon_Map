@@ -374,7 +374,9 @@
                     let lastClickTime = 0;
 
                     const openTargetRoom = () => {
+                        // Sla zowel de kamer als de geselecteerde categorie op in localStorage
                         localStorage.setItem('target_room', room.id);
+                        localStorage.setItem('dungeon_current_category', currentCategory);
                         window.open('https://bg-nttw-2025.github.io/Dungeon/', 'dungeon_game_window');
                     };
 
