@@ -175,32 +175,28 @@
 
         stage.on('touchend', () => { lastDist = 0; });
 
+        
         // 5. Functie om Rooms en Doors op te halen per categorie en te tonen in de overlay
         async function updateGlobalStats() {
             try {
-                const { data: roomData, error: roomError } = await supabaseClient
-                    .from('puzzle_labyrinth')
-                    .select('room_id')
-                    .eq('category', currentCategory)
-                    .order('room_id', { ascending: false })
-                    .limit(1);
-
+                // Haal alle rijen op voor deze categorie om unieke kamers te tellen
                 const { data: rows, error: rowsError } = await supabaseClient
                     .from('puzzle_labyrinth')
-                    .select('id')
+                    .select('room_id, id')
                     .eq('category', currentCategory);
 
-                if (!roomError && roomData && roomData.length > 0) {
-                    const maxRoom = roomData[0].room_id || 0;
-                    document.getElementById('stat-rooms').textContent = "Rooms: " + maxRoom;
-                } else {
-                    document.getElementById('stat-rooms').textContent = "Rooms: 0";
-                }
+                if (rowsError) throw rowsError;
 
-                if (!rowsError && rows) {
+                if (rows && rows.length > 0) {
+                    // Tel het unieke aantal kamers op basis van room_id (of id als fallback)
+                    const uniqueRooms = new Set(rows.map(r => r.room_id || r.id));
+                    document.getElementById('stat-rooms').textContent = "Rooms: " + uniqueRooms.size;
+
+                    // Deuren blijven gebaseerd op het totaal aantal rijen / records
                     const totalDoors = Math.floor(rows.length / 2);
                     document.getElementById('stat-doors').textContent = "Doors: " + totalDoors;
                 } else {
+                    document.getElementById('stat-rooms').textContent = "Rooms: 0";
                     document.getElementById('stat-doors').textContent = "Doors: 0";
                 }
             } catch (err) {
