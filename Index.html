@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Doolhof Beheer Overzicht</title>
+    <!-- Konva.js -->
+    <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #222;
+            font-family: sans-serif;
+            touch-action: none;
+        }
+        #info-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #555;
+            padding: 12px 15px;
+            border-radius: 8px;
+            pointer-events: auto;
+            font-size: 13px;
+            z-index: 10;
+            line-height: 1.5;
+            min-width: 260px;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="info-overlay">
+        <strong>Map Puzzle Dungeon</strong><br>
+        <label for="category-filter" style="font-size: 11px; color: #aaa; display: block; margin-top: 4px;">Category:</label>
+        <select id="category-filter" style="width: 100%; padding: 5px; margin-top: 2px; margin-bottom: 6px; background: #1a1a2e; color: white; border: 1px solid #555; border-radius: 4px; font-size: 12px;">
+            <option value="General">General</option>
+            <option value="Logic">Logic</option>
+            <option value="Geography">Geography</option>
+            <option value="Entertainment">Entertainment</option>
+            <option value="History">History</option>
+            <option value="Art and Literature">Art and Literature</option>
+            <option value="Science and Nature">Science and Nature</option>
+            <option value="Sports and Recreation">Sports and Recreation</option>
+            <option value="Kids">Kids</option>
+            <option value="Nerds">Nerds</option>
+        </select>
+        <span id="stat-rooms">Rooms: Laten laden...</span><br>
+        <span id="stat-doors">Doors: Laten laden...</span><br>
+        <hr style="border-color: #444; margin: 6px 0;">
+        
+        <!-- Asset Filter Dropdown -->
+        <label for="asset-filter" style="font-size: 11px; color: #ffd700; display: block; margin-top: 2px;">Find Asset in Rooms:</label>
+        <select id="asset-filter" style="width: 100%; padding: 5px; margin-top: 2px; margin-bottom: 6px; background: #1a1a2e; color: white; border: 1px solid #555; border-radius: 4px; font-size: 12px;" onchange="filterRoomsByAsset(this.value)">
+            <option value="">-- Select Asset --</option>
+            <option value="asset_bank_rs.png">Bank</option>
+            <option value="asset_pawnshop_rs.png">Pawnshop</option>
+            <option value="asset_police_rs.png">Police</option>
+            <option value="asset_super_rs.png">Supermarket</option>
+            <option value="asset_robber_rs.png">Robber</option>
+            <option value="asset_food_rs.png">Food</option>
+            <option value="asset_loot_rs.png">Loot</option>
+        </select>
+        <div id="asset-rooms-list" style="font-size: 11px; color: #aaa; max-height: 100px; overflow-y: auto; margin-bottom: 6px; background: #111; padding: 4px; border-radius: 4px; display: none;"></div>
+
+        <div id="room-details">
+            - Click on a room for details<br>
+            - Double Click transports you to that Room<br>
+            - Mousewheel / Pinch (2 vingers) to zoom<br>
+			- Drag to move dungeon
+        </div>
+    </div>
+
+    <div id="container"></div>
+
+    <script>
+        // 1. Supabase Configuratie
+        const supabaseUrl = 'https://mgqoxmnryqekrpjglffb.supabase.co';
+        const supabaseKey = 'sb_publishable_btgAerx5A8O7urSEflRDAg_8NSdtoOu';
+        const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        let currentCategory = localStorage.getItem('selected_map_category') || 'General';
+        const categorySelect = document.getElementById('category-filter');
+        categorySelect.value = currentCategory;
+
+        let globalRoomsDataMap = {}; // Wordt gevuld in loadMazeMap om kamernummers op te zoeken
+
+        categorySelect.addEventListener('change', (e) => {
+            currentCategory = e.target.value;
+            localStorage.setItem('selected_map_category', currentCategory);
+            document.getElementById('asset-filter').value = "";
+            document.getElementById('asset-rooms-list').style.display = 'none';
+            updateGlobalStats();
+            loadMazeMap(currentCategory);
+        });
+	
+        async function checkDesignerAccess() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            
+            if (!session) {
+                document.body.innerHTML = '<div style="color: white; background: #1a1a2e; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; text-align: center; padding: 20px;">' +
+                    '<h2 style="color: #e94560; margin-bottom: 10px;">Access Denied</h2>' +
+                    '<p style="color: #aaa; margin-bottom: 20px;">You must be logged in as a designer to view the Dungeon Map.</p>' +
+                    '<a href="https://bg-nttw-2025.github.io/Dungeon_Submit_Puzzle/" style="background: #0f3460; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold;">Back to Log In</a>' +
+                    '</div>';
+                
+                throw new Error('Unauthorized');
+            } else {
+                updateGlobalStats();
+                loadMazeMap(currentCategory);
+            }
+        }
+
+        checkDesignerAccess();
+
+        // 2. Konva Stage (Canvas) Initialiseren
+        const stage = new Konva.Stage({
+            container: 'container',
+            width: window.innerWidth,
+            height: window.innerHeight,
+            draggable: true
+        });
+
+        const layer = new Konva.Layer();
+        stage.add(layer);
+
+        const uiLayer = new Konva.Layer();
+        stage.add(uiLayer);
+
+        window.addEventListener('resize', () => {
+            stage.width(window.innerWidth);
+            stage.height(window.innerHeight);
+        });
+
+        // 3. Zoom & Pan Functionaliteit
+        stage.on('wheel', (e) => {
+            e.evt.preventDefault();
+            const scaleBy = 1.1;
+            const oldScale = stage.scaleX();
+            const pointer = stage.getPointerPosition();
+
+            const mousePointTo = {
+                x: (pointer.x - stage.x()) / oldScale,
+                y: (pointer.y - stage.y()) / oldScale,
+            };
+
+            const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+            if (newScale < 0.1 || newScale > 5) return;
+
+            stage.scale({ x: newScale, y: newScale });
+
+            const newPos = {
+                x: pointer.x - mousePointTo.x * newScale,
+                y: pointer.y - mousePointTo.y * newScale,
+            };
+            stage.position(newPos);
+        });
+
+        let lastDist = 0;
+        stage.on('touchmove', (e) => {
+            const touch1 = e.evt.touches[0];
+            const touch2 = e.evt.touches[1];
+
+            if (touch1 && touch2) {
+                e.evt.preventDefault();
+                const dist = Math.sqrt(
+                    Math.pow(touch2.clientX - touch1.clientX, 2) +
+                    Math.pow(touch2.clientY - touch1.clientY, 2)
+                );
+
+                if (!lastDist) lastDist = dist;
+
+                const scaleBy = dist / lastDist;
+                const oldScale = stage.scaleX();
+                const newScale = oldScale * scaleBy;
+
+                if (newScale > 0.1 && newScale < 5) {
+                    stage.scale({ x: newScale, y: newScale });
+                }
+                lastDist = dist;
+            }
+        });
+
+        stage.on('touchend', () => { lastDist = 0; });
+
+        async function updateGlobalStats() {
+            try {
+                const { data: rows, error: rowsError } = await supabaseClient
+                    .from('puzzle_labyrinth')
+                    .select('room_id, id')
+                    .eq('category', currentCategory);
+
+                if (rowsError) throw rowsError;
+
+                if (rows && rows.length > 0) {
+                    const uniqueRooms = new Set(rows.map(r => r.room_id || r.id));
+                    document.getElementById('stat-rooms').textContent = "Rooms: " + uniqueRooms.size;
+                    const totalDoors = Math.floor(rows.length / 2);
+                    document.getElementById('stat-doors').textContent = "Doors: " + totalDoors;
+                } else {
+                    document.getElementById('stat-rooms').textContent = "Rooms: 0";
+                    document.getElementById('stat-doors').textContent = "Doors: 0";
+                }
+            } catch (err) {
+                console.error('Fout bij ophalen globale statistieken:', err);
+            }
+        }
+
+        setInterval(updateGlobalStats, 60 * 60 * 1000);
+
+        function truncate(str, n) {
+            if (!str) return 'No';
+            return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
+        }
+
+        // --- Functie om kamers per geselecteerde asset op te zoeken en te tonen ---
+        function filterRoomsByAsset(assetFilename) {
+            const listContainer = document.getElementById('asset-rooms-list');
+            if (!assetFilename) {
+                listContainer.style.display = 'none';
+                listContainer.innerHTML = '';
+                return;
+            }
+
+            // Lees de dagelijkse assets uit localStorage per categorie
+            const dailyAssetsMap = JSON.parse(localStorage.getItem('dungeon_daily_assets_' + currentCategory)) || {};
+            let matchedRoomIds = [];
+
+            // Loop door alle kamersleutels (pos_x_pos_y) in de localStorage map
+            for (const [roomKey, assetsArray] of Object.entries(dailyAssetsMap)) {
+                if (assetsArray.includes(assetFilename)) {
+                    // Zoek bijbehorende kamernummer op via globalRoomsDataMap
+                    if (globalRoomsDataMap[roomKey]) {
+                        matchedRoomIds.push(globalRoomsDataMap[roomKey].id);
+                    }
+                }
+            }
+
+            if (matchedRoomIds.length === 0) {
+                listContainer.style.display = 'block';
+                listContainer.innerHTML = '<span style="color: #e74c3c;">No rooms found with this asset.</span>';
+                return;
+            }
+
+            // Sorteer kamernummers van laag naar hoog
+            matchedRoomIds.sort((a, b) => Number(a) - Number(b));
+
+            // Groepeer per 4 getallen op een regel
+            let html = '';
+            let currentRow = [];
+            matchedRoomIds.forEach((id, index) => {
+                currentRow.push(id);
+                if (currentRow.length === 4 || index === matchedRoomIds.length - 1) {
+                    html += currentRow.join(', ') + '<br>';
+                    currentRow = [];
+                }
+            });
+
+            listContainer.style.display = 'block';
+            listContainer.innerHTML = html;
+        }
+
+        async function loadMazeMap(category) {
+            try {
+                layer.destroyChildren();
+                globalRoomsDataMap = {}; // Reset map
+
+                const { data: rows, error: roomError } = await supabaseClient
+                    .from('puzzle_labyrinth')
+                    .select('*')
+                    .eq('category', category);
+
+                if (roomError) throw roomError;
+
+                rows.forEach(row => {
+                    const roomId = row.room_id || row.id; 
+                    const side = row.wall_side;
+                    const coordKey = row.pos_x + '_' + row.pos_y;
+
+                    if (!globalRoomsDataMap[coordKey]) {
+                        globalRoomsDataMap[coordKey] = {
+                            id: roomId,
+                            x: row.pos_x,
+                            y: row.pos_y,
+                            walls: []
+                        };
+                    }
+
+                    if (side) {
+                        globalRoomsDataMap[coordKey].walls.push({
+                            side: side.toLowerCase(),
+                            designer: row.designer_name || 'Unknown',
+                            puzzleName: row.puzzle_name || 'No puzzle'
+                        });
+                    }
+                });
+
+                const sideOrder = { 'north': 1, 'east': 2, 'south': 3, 'west': 4 };
+                const boxSize = 50;
+                const spacing = 15;
+                const step = boxSize + spacing;
+
+                Object.values(globalRoomsDataMap).forEach(room => {
+                    if (room.x === undefined || room.y === undefined) return;
+
+                    room.walls.sort((a, b) => (sideOrder[a.side] || 99) - (sideOrder[b.side] || 99));
+
+                    const posX = room.x * step;
+                    const posY = -room.y * step;
+
+                    const roomGroup = new Konva.Group({
+                        x: posX,
+                        y: posY,
+                        cursor: 'pointer'
+                    });
+
+                    const rect = new Konva.Rect({
+                        width: boxSize,
+                        height: boxSize,
+                        fill: '#88aaff',
+                        stroke: '#333333',
+                        strokeWidth: 2,
+                        cornerRadius: 6
+                    });
+                    roomGroup.add(rect);
+
+                    const text = new Konva.Text({
+                        y: 16,
+                        text: "R-" + room.id,
+                        width: boxSize,
+                        align: 'center',
+                        fontSize: room.id > 999999 ? 9 : 12,
+                        fill: '#ffffff',
+                        fontStyle: 'bold',
+                        listening: false
+                    });
+                    roomGroup.add(text);
+
+                    const doorSize = 18;
+                    const doorColor = '#cc3333';
+
+                    room.walls.forEach(wall => {
+                        let dx = 0, dy = 0, dw = doorSize, dh = 4;
+
+                        if (wall.side === 'north') {
+                            dx = (boxSize - doorSize) / 2;
+                            dy = -2;
+                            dw = doorSize;
+                            dh = 4;
+                        } else if (wall.side === 'south') {
+                            dx = (boxSize - doorSize) / 2;
+                            dy = boxSize - 2;
+                            dw = doorSize;
+                            dh = 4;
+                        } else if (wall.side === 'west') {
+                            dx = -2;
+                            dy = (boxSize - doorSize) / 2;
+                            dw = 4;
+                            dh = doorSize;
+                        } else if (wall.side === 'east') {
+                            dx = boxSize - 2;
+                            dy = (boxSize - doorSize) / 2;
+                            dw = 4;
+                            dh = doorSize;
+                        }
+
+                        const doorRect = new Konva.Rect({
+                            x: dx,
+                            y: dy,
+                            width: dw,
+                            height: dh,
+                            fill: doorColor,
+                            listening: false
+                        });
+                        roomGroup.add(doorRect);
+                    });
+
+                    roomGroup.on('click tap', () => {
+                        rect.fill('#ffaa33');
+                        layer.batchDraw();
+                        setTimeout(() => {
+                            rect.fill('#88aaff');
+                            layer.batchDraw();
+                        }, 200);
+
+                        let displayText = "<strong>Room: R-" + room.id + "</strong><br>";
+
+                        if (room.walls.length === 0) {
+                            displayText += "No doors/puzzles found.";
+                        } else {
+                            room.walls.forEach(wall => {
+                                const formattedSide = wall.side.charAt(0).toUpperCase() + wall.side.slice(1);
+                                const safePuzzleName = truncate(wall.puzzleName, 30);
+                                displayText += "Door: " + formattedSide + "<br>";
+                                displayText += "By: " + wall.designer + "<br>";
+                                displayText += "Puzzle: " + safePuzzleName + "<br>";
+                            });
+                        }
+
+                        document.getElementById('room-details').innerHTML = displayText;
+                    });
+
+                    let lastClickTime = 0;
+                    const openTargetRoom = () => {
+                        localStorage.setItem('target_room', room.id);
+                        localStorage.setItem('dungeon_current_category', currentCategory);
+                        window.open('https://bg-nttw-2025.github.io/Dungeon/', 'dungeon_game_window');
+                    };
+
+                    roomGroup.on('dblclick', openTargetRoom);
+
+                    roomGroup.on('tap', () => {
+                        const currentTime = new Date().getTime();
+                        const tapLength = currentTime - lastClickTime;
+                        if (tapLength < 300 && tapLength > 0) {
+                            openTargetRoom();
+                        }
+                        lastClickTime = currentTime;
+                    });
+
+                    layer.add(roomGroup);
+                });
+
+                layer.draw();
+
+                stage.position({
+                    x: window.innerWidth / 2 - 25,
+                    y: window.innerHeight / 2 - 25
+                });
+                stage.batchDraw();
+
+            } catch (err) {
+                console.error('Fout bij het laden van het doolhof:', err);
+            }
+        }
+
+    </script>
+</body>
+</html>
