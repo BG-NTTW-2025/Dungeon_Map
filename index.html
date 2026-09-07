@@ -32,6 +32,7 @@
             z-index: 10;
             line-height: 1.5;
             min-width: 260px;
+            max-width: 300px;
         }
     </style>
 </head>
@@ -55,6 +56,21 @@
         <span id="stat-rooms">Rooms: Laten laden...</span><br>
         <span id="stat-doors">Doors: Laten laden...</span><br>
         <hr style="border-color: #444; margin: 6px 0;">
+        
+        <!-- Asset Filter Dropdown -->
+        <label for="asset-filter" style="font-size: 11px; color: #ffd700; display: block; margin-top: 2px;">Find Asset in Rooms:</label>
+        <select id="asset-filter" style="width: 100%; padding: 5px; margin-top: 2px; margin-bottom: 6px; background: #1a1a2e; color: white; border: 1px solid #555; border-radius: 4px; font-size: 12px;" onchange="filterRoomsByAsset(this.value)">
+            <option value="">-- Select Asset --</option>
+            <option value="asset_bank_rs.png">Bank</option>
+            <option value="asset_pawnshop_rs.png">Pawnshop</option>
+            <option value="asset_police_rs.png">Police</option>
+            <option value="asset_super_rs.png">Supermarket</option>
+            <option value="asset_robber_rs.png">Robber</option>
+            <option value="asset_food_rs.png">Food</option>
+            <option value="asset_loot_rs.png">Loot</option>
+        </select>
+        <div id="asset-rooms-list" style="font-size: 11px; color: #aaa; max-height: 100px; overflow-y: auto; margin-bottom: 6px; background: #111; padding: 4px; border-radius: 4px; display: none;"></div>
+
         <div id="room-details">
             - Click on a room for details<br>
             - Double Click transports you to that Room<br>
@@ -71,19 +87,21 @@
         const supabaseKey = 'sb_publishable_btgAerx5A8O7urSEflRDAg_8NSdtoOu';
         const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-        // Huidige categorie ophalen uit localStorage of standaard op 'General' zetten
         let currentCategory = localStorage.getItem('selected_map_category') || 'General';
         const categorySelect = document.getElementById('category-filter');
         categorySelect.value = currentCategory;
 
+        let globalRoomsDataMap = {}; // Wordt gevuld in loadMazeMap om kamernummers op te zoeken
+
         categorySelect.addEventListener('change', (e) => {
             currentCategory = e.target.value;
             localStorage.setItem('selected_map_category', currentCategory);
+            document.getElementById('asset-filter').value = "";
+            document.getElementById('asset-rooms-list').style.display = 'none';
             updateGlobalStats();
             loadMazeMap(currentCategory);
         });
 	
-        // Controleer of de bezoeker wel is ingelogd als designer
         async function checkDesignerAccess() {
             const { data: { session } } = await supabaseClient.auth.getSession();
             
@@ -96,7 +114,6 @@
                 
                 throw new Error('Unauthorized');
             } else {
-                // Initialiseer data zodra toegang verleend is
                 updateGlobalStats();
                 loadMazeMap(currentCategory);
             }
@@ -147,7 +164,6 @@
             stage.position(newPos);
         });
 
-        // 4. Pinch-to-Zoom logica
         let lastDist = 0;
         stage.on('touchmove', (e) => {
             const touch1 = e.evt.touches[0];
@@ -175,11 +191,8 @@
 
         stage.on('touchend', () => { lastDist = 0; });
 
-        
-        // 5. Functie om Rooms en Doors op te halen per categorie en te tonen in de overlay
         async function updateGlobalStats() {
             try {
-                // Haal alle rijen op voor deze categorie om unieke kamers te tellen
                 const { data: rows, error: rowsError } = await supabaseClient
                     .from('puzzle_labyrinth')
                     .select('room_id, id')
@@ -188,11 +201,8 @@
                 if (rowsError) throw rowsError;
 
                 if (rows && rows.length > 0) {
-                    // Tel het unieke aantal kamers op basis van room_id (of id als fallback)
                     const uniqueRooms = new Set(rows.map(r => r.room_id || r.id));
                     document.getElementById('stat-rooms').textContent = "Rooms: " + uniqueRooms.size;
-
-                    // Deuren blijven gebaseerd op het totaal aantal rijen / records
                     const totalDoors = Math.floor(rows.length / 2);
                     document.getElementById('stat-doors').textContent = "Doors: " + totalDoors;
                 } else {
@@ -206,28 +216,62 @@
 
         setInterval(updateGlobalStats, 60 * 60 * 1000);
 
-        const infoBoxWidth = 280;
-        const infoBoxHeight = 160;
-
-        const infoText = new Konva.Text({
-            x: 12,
-            y: 12,
-            text: 'Click on a room\nfor details...',
-            fontSize: 13,
-            fill: '#ffffff',
-            lineHeight: 1.4,
-            width: infoBoxWidth - 24
-        });
-
         function truncate(str, n) {
             if (!str) return 'No';
             return (str.length > n) ? str.substr(0, n - 1) + '...' : str;
         }
 
-        // 7. Data ophalen uit Supabase per categorie en tekenen
+        // --- Functie om kamers per geselecteerde asset op te zoeken en te tonen ---
+        function filterRoomsByAsset(assetFilename) {
+            const listContainer = document.getElementById('asset-rooms-list');
+            if (!assetFilename) {
+                listContainer.style.display = 'none';
+                listContainer.innerHTML = '';
+                return;
+            }
+
+            // Lees de dagelijkse assets uit localStorage per categorie
+            const dailyAssetsMap = JSON.parse(localStorage.getItem('dungeon_daily_assets_' + currentCategory)) || {};
+            let matchedRoomIds = [];
+
+            // Loop door alle kamersleutels (pos_x_pos_y) in de localStorage map
+            for (const [roomKey, assetsArray] of Object.entries(dailyAssetsMap)) {
+                if (assetsArray.includes(assetFilename)) {
+                    // Zoek bijbehorende kamernummer op via globalRoomsDataMap
+                    if (globalRoomsDataMap[roomKey]) {
+                        matchedRoomIds.push(globalRoomsDataMap[roomKey].id);
+                    }
+                }
+            }
+
+            if (matchedRoomIds.length === 0) {
+                listContainer.style.display = 'block';
+                listContainer.innerHTML = '<span style="color: #e74c3c;">No rooms found with this asset.</span>';
+                return;
+            }
+
+            // Sorteer kamernummers van laag naar hoog
+            matchedRoomIds.sort((a, b) => Number(a) - Number(b));
+
+            // Groepeer per 4 getallen op een regel
+            let html = '';
+            let currentRow = [];
+            matchedRoomIds.forEach((id, index) => {
+                currentRow.push(id);
+                if (currentRow.length === 4 || index === matchedRoomIds.length - 1) {
+                    html += currentRow.join(', ') + '<br>';
+                    currentRow = [];
+                }
+            });
+
+            listContainer.style.display = 'block';
+            listContainer.innerHTML = html;
+        }
+
         async function loadMazeMap(category) {
             try {
                 layer.destroyChildren();
+                globalRoomsDataMap = {}; // Reset map
 
                 const { data: rows, error: roomError } = await supabaseClient
                     .from('puzzle_labyrinth')
@@ -236,14 +280,13 @@
 
                 if (roomError) throw roomError;
 
-                const roomsDataMap = {};
-
                 rows.forEach(row => {
                     const roomId = row.room_id || row.id; 
                     const side = row.wall_side;
+                    const coordKey = row.pos_x + '_' + row.pos_y;
 
-                    if (!roomsDataMap[roomId]) {
-                        roomsDataMap[roomId] = {
+                    if (!globalRoomsDataMap[coordKey]) {
+                        globalRoomsDataMap[coordKey] = {
                             id: roomId,
                             x: row.pos_x,
                             y: row.pos_y,
@@ -252,7 +295,7 @@
                     }
 
                     if (side) {
-                        roomsDataMap[roomId].walls.push({
+                        globalRoomsDataMap[coordKey].walls.push({
                             side: side.toLowerCase(),
                             designer: row.designer_name || 'Unknown',
                             puzzleName: row.puzzle_name || 'No puzzle'
@@ -265,7 +308,7 @@
                 const spacing = 15;
                 const step = boxSize + spacing;
 
-                Object.values(roomsDataMap).forEach(room => {
+                Object.values(globalRoomsDataMap).forEach(room => {
                     if (room.x === undefined || room.y === undefined) return;
 
                     room.walls.sort((a, b) => (sideOrder[a.side] || 99) - (sideOrder[b.side] || 99));
@@ -340,7 +383,6 @@
                         roomGroup.add(doorRect);
                     });
 
-                    // Klik / Tap event
                     roomGroup.on('click tap', () => {
                         rect.fill('#ffaa33');
                         layer.batchDraw();
@@ -366,11 +408,8 @@
                         document.getElementById('room-details').innerHTML = displayText;
                     });
 
-                    // Dubbelklik & Double-Tap logica voor zowel desktop als tablet
                     let lastClickTime = 0;
-
                     const openTargetRoom = () => {
-                        // Sla zowel de kamer als de geselecteerde categorie op in localStorage
                         localStorage.setItem('target_room', room.id);
                         localStorage.setItem('dungeon_current_category', currentCategory);
                         window.open('https://bg-nttw-2025.github.io/Dungeon/', 'dungeon_game_window');
